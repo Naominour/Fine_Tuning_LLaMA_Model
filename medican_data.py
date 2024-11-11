@@ -26,27 +26,13 @@ import glob
 import json
 import random
 import requests
+import numpy as np
+import pandas as pd
+
 from tqdm import tqdm
 from concurrent.futures import ProcessPoolExecutor, as_completed
-import numpy as np
-
 from tokenizer import Tokenizer
 # -----------------------------------------------------------------------------
-
-def download_file(url: str, fname: str, chunk_size=1024):
-    """Helper function to download a file from a given url"""
-    resp = requests.get(url, stream=True)
-    total = int(resp.headers.get("content-length", 0))
-    with open(fname, "wb") as file, tqdm(
-        desc=fname,
-        total=total,
-        unit="iB",
-        unit_scale=True,
-        unit_divisor=1024,
-    ) as bar:
-        for data in resp.iter_content(chunk_size=chunk_size):
-            size = file.write(data)
-            bar.update(size)
 
 def write_datafile(filename, toks):
     """
@@ -68,56 +54,30 @@ def write_datafile(filename, toks):
         f.write(header.tobytes())
         f.write(toks_np.tobytes())
 
-def download():
-    """Downloads the TinyStories dataset to DATA_CACHE_DIR"""
-    os.makedirs(DATA_CACHE_DIR, exist_ok=True)
-
-    # download the TinyStories dataset, unless it's already downloaded
-    data_url = "https://huggingface.co/datasets/roneneldan/TinyStories/resolve/main/TinyStories_all_data.tar.gz"
-    data_filename = os.path.join(DATA_CACHE_DIR, "TinyStories_all_data.tar.gz")
-    if not os.path.exists(data_filename):
-        print(f"Downloading {data_url} to {data_filename}...")
-        download_file(data_url, data_filename)
-    else:
-        print(f"{data_filename} already exists, skipping download...")
-
-    # unpack the tar.gz file into all the data shards (json files)
-    data_dir = os.path.join(DATA_CACHE_DIR, "TinyStories_all_data")
-    if not os.path.exists(data_dir):
-        os.makedirs(data_dir, exist_ok=True)
-        print(f"Unpacking {data_filename}...")
-        os.system(f"tar -xzf {data_filename} -C {data_dir}")
-    else:
-        print(f"{data_dir} already exists, skipping unpacking...")
-
-    # print a single example just for debugging and such
-    shard_filenames = sorted(glob.glob(os.path.join(data_dir, "*.json")))
-    print("Download done.")
-    print(f"Number of shards: {len(shard_filenames)}")
-    # with open(shard_filenames[0], "r") as f:
-    #     data = json.load(f)
-    # print(f"Example story:\n{data[0]}")
-
-def process_shard(shard_index, shard_filename, tokenizer_path):
+def process_shard(shard_index, csv_filename, tokenizer_path, text_column="Question", answer_column="Answer", split="split"):
     # create tokenizer and encode function within the process
     tokenizer = Tokenizer(tokenizer_path)
     def encode(x):
         return tokenizer.encode(x, bos=True, eos=True)
 
-    with open(shard_filename, "r") as f:
-        data = json.load(f)
+    data = pd.read_csv(csv_filename)
+    data = data[data['split'] == split ]
+
     rng = random.Random(1337 + shard_index)
     rng.shuffle(data)
     all_tokens = []
-    for example in data:
-        text = example["story"]
-        text = text.strip()  # get rid of leading/trailing whitespace
+
+    for _, row in data.dropna(subset=[text_column, answer_column]).iterrows():
+        
+        text =  f"Q: {row[text_column]}\nA: {row[answer_column]}"
         tokens = encode(text)
         all_tokens.extend(tokens)
     return all_tokens
 
-def tokenize(tokenizer_path):
+def tokenize(tokenizer_path, data_directory, output_directory):
+    csv_files = glob(os.path.join(data_directory, "*.csv"))
     # shard 0 will be the val split, rest is train
+    '''
     data_dir = os.path.join(DATA_CACHE_DIR, "TinyStories_all_data")
     shard_filenames = sorted(glob.glob(os.path.join(data_dir, "*.json")))
     val_shards = [shard_filenames[0]]
@@ -134,11 +94,31 @@ def tokenize(tokenizer_path):
 
         split_filename = os.path.join(DATA_CACHE_DIR, f"TinyStories_{split_name}.bin")
         write_datafile(split_filename, all_tokens)
+'''
+    for split_name in ["train", "test"]:
+        print(f"Tokenizing {split_name} split with {len(csv_files)} files...")
+        with ProcessPoolExecutor() as executor:
+            futures = []
+            for file in csv_files:
+                futures.append(
+                    executor.submit(process_shard, file, tokenizer_path, "Question", "Answer", split=split_name)
+                )
+                
+                for future in as_completed(futures):
+                    all_tokens = future.result()
+                    
+                    # Create a unique output filename based on the file name and split
+                    base_name = os.path.basename(file).replace(".csv", "")
+                    output_filename = os.path.join(output_directory, f"{base_name}_{split_name}.bin")
+                    
+                    # Save tokens to a unique shard file
+                    write_datafile(output_filename, all_tokens)
+                    print(f"Saved {split_name} shard to {output_filename}")
 
-# -----------------------------------------------------------------------------
-
+# Assuming DATA_CACHE_DIR is your chosen directory for tokenized output
 if __name__ == "__main__":
-    DATA_CACHE_DIR = os.path.join(os.path.dirname(__file__), "tinystories")
+    DATA_CACHE_DIR = "G:\\My Drive\\Medical_LLM\\output_data"  # Define your output directory
     tokenizer_path = "llama-models/models/llama3_1/Meta-Llama-3.1-8B/tokenizer.model"
-    download()
-    tokenize(tokenizer_path)
+    data_directory = "G:\\My Drive\\Medical_LLM\\input_data"  # Directory with your CSV files
+    
+    tokenize(tokenizer_path, data_directory, DATA_CACHE_DIR)

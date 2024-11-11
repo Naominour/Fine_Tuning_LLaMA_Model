@@ -19,14 +19,14 @@ import fire
 import time
 import json
 import math
-from pathlib import Path
-from dataclasses import dataclass
-from typing import List, Optional, Tuple, TypedDict
 import torch
-from torch import nn
 import torch.nn.functional as F
 import numpy as np
 
+from pathlib import Path
+from dataclasses import dataclass
+from typing import List, Optional, Tuple, TypedDict
+from torch import nn
 from tokenizer import Tokenizer
 
 # -----------------------------------------------------------------------------
