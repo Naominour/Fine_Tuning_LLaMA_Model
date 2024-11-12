@@ -281,6 +281,10 @@ class Transformer(nn.Module):
             params.rope_theta,
             params.use_scaled_rope,
         )
+        
+    def forward(self, tokens: torch.Tensor, start_pos: int):
+        """Forward method that redirects to forward_inference during generation"""
+        return self.forward_inference(tokens, start_pos)
 
     def forward_inference(self, tokens: torch.Tensor, start_pos: int):
         # for use during inference
@@ -659,8 +663,7 @@ def main(
 
     # load the val data shard
     data_loader = DistributedShardedDataLoader(
-        filename_pattern="tinystories/*_val.bin",
-        B=max_batch_size,
+        filename_pattern="/content/drive/MyDrive/Llama_Medical_LLM/output_data/*_test.bin",
         T=max_seq_len,
         process_rank=0,
         num_processes=1,

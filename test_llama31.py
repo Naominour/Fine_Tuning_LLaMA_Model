@@ -10,8 +10,8 @@ import torch
 from llama31 import Llama
 
 def test_inference(
-    ckpt_dir: str = "llama-models/models/llama3_1/Meta-Llama-3.1-8B",
-    tokenizer_path: str = "llama-models/models/llama3_1/Meta-Llama-3.1-8B/tokenizer.model",
+    ckpt_dir: str = "/content/drive/MyDrive/Llama_Medical_LLM/Llama3.1-8B",
+    tokenizer_path: str = "/content/drive/MyDrive/Llama_Medical_LLM/Llama3.1-8B/tokenizer.model",
     temperature: float = 0.0, # note: doing argmax decoding
     top_p: float = 0.9,
     max_seq_len: int = 128,
