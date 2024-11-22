@@ -324,19 +324,14 @@ def sample_top_p(probs, p, generator):
 def main(
     ckpt_dir: str,
     tokenizer_path: str,
-    temperature: float = 0.0, # note: doing argmax decoding
+    temperature: float = 0.7,  # Changed from 0.0 to allow more variety
     top_p: float = 0.9,
     max_seq_len: int = 128,
-    max_gen_len: int = 32,
+    max_gen_len: int = 64,     # Increased from 32
     max_batch_size: int = 4,
 ):
-    """
-    Examples to run with the pre-trained models (no fine-tuning). Prompts are
-    usually in the form of an incomplete text prefix that the model can then try to complete.
-
-    The context window of llama3 models is 8192 tokens, so `max_seq_len` needs to be <= 8192.
-    `max_gen_len` is needed because pre-trained models usually do not stop completions naturally.
-    """
+    """Run text generation with better parameters"""
+    print("Initializing model...")
     generator = Llama.build(
         ckpt_dir=ckpt_dir,
         tokenizer_path=tokenizer_path,
@@ -344,35 +339,37 @@ def main(
         max_batch_size=max_batch_size,
     )
 
-    # AK: fixed a trailing whitespace bug and adjusted the prompts a bit
+    # Medical prompts
     prompts: List[str] = [
-        # For these prompts, the expected answer is the natural continuation of the prompt
-        "Clearly, the meaning of life is",
-        "Simply put, the theory of relativity states that",
-        """The repo llm.c on GitHub is""",
-        # Few shot prompt (providing a few examples before asking model to complete more);
-        """Translate English to French:
-
-        sea otter => loutre de mer
-        peppermint => menthe poivrée
-        plush girafe => girafe peluche
-        cheese =>""",
+        "Q: What is melanoma?\nA:",
+        "Q: What are the symptoms of diabetes?\nA:",
+        "Q: How is high blood pressure treated?\nA:",
     ]
+
+    print("\nGenerating responses...")
     sample_rng = torch.Generator(device='cuda')
     sample_rng.manual_seed(1337)
+    
+    # Set model to evaluation mode
+    generator.model.eval()
+    
+    # Generate with modified parameters
     results = generator.text_completion(
         prompts,
         sample_rng=sample_rng,
         max_gen_len=max_gen_len,
-        temperature=temperature,
+        temperature=temperature,  # Higher temperature for more diversity
         top_p=top_p,
     )
-    for prompt, result in zip(prompts, results):
-        print(prompt, end="") # AK: change end="\n" to end=""
-        print(f"{result['generation']}")
-        print("\n==================================\n")
 
-    # AK: added clean up torch.distributed
+    # Print results with formatting
+    print("\nGenerated Responses:")
+    print("=" * 50)
+    for prompt, result in zip(prompts, results):
+        print(f"\nPrompt: {prompt}")
+        print(f"Response: {result['generation']}")
+        print("-" * 50)
+
     torch.distributed.destroy_process_group()
 
 if __name__ == "__main__":

@@ -693,13 +693,17 @@ def main(
         optimizer.step()
         print(f"step {step}, loss: {loss.item()}")
 
+    # Save the trained model
+    checkpoint_path = "G:/My Drive/Llama_Medical_LLM/output_data/model_checkpoint.pth"
+    torch.save(model.state_dict(), checkpoint_path)
+    print(f"Model saved to {checkpoint_path}")
+
     # and now generate
     model.eval()
     prompts: List[str] = [
-        "Once upon a time",
-        "One day",
-        "Lily and George were best friends",
-        "On a dark and stormy night",
+        "The first symptoms of rabies may be very similar to",
+        "Marine toxins are naturally occurring",
+        "Obesity and having metabolic syndrome may increase the risk of",
     ]
 
     sample_rng = torch.Generator(device='cuda')
