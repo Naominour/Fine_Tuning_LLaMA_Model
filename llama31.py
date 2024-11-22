@@ -20,6 +20,7 @@ import time
 import json
 import math
 import torch
+import matplotlib.pyplot as plt
 import torch.nn.functional as F
 import numpy as np
 
@@ -650,6 +651,7 @@ class DistributedShardedDataLoader:
 # -----------------------------------------------------------------------------
 # int main
 
+
 def main(
     ckpt_dir: str = "llama-models/models/llama3_1/Meta-Llama-3.1-8B",
     tokenizer_path: str = "llama-models/models/llama3_1/Meta-Llama-3.1-8B/tokenizer.model",
@@ -659,9 +661,10 @@ def main(
     max_gen_len: int = 256,
     max_batch_size: int = 8,
     flash: bool = True,
+    total_steps: int = 10000,  # total number of training steps
 ):
 
-    # load the val data shard
+    # Load the validation data shard
     data_loader = DistributedShardedDataLoader(
         filename_pattern="/content/drive/MyDrive/Llama_Medical_LLM/output_data/*_test.bin",
         T=max_seq_len,
@@ -680,30 +683,60 @@ def main(
     total_batch_size = max_batch_size * max_seq_len
     print(f"total_batch_size: {total_batch_size}")
 
-    # super simple training loop to start
+    # Simple training loop to start
     model = llama.model
     model.train()
     optimizer = model.configure_optimizers(learning_rate=1e-5, weight_decay=0.0)
-    for step in range(20):
+
+    # List to store loss values for plotting
+    train_loss_values = []
+
+    # MLFlow Logging
+    mlflow.start_run()
+    mlflow.log_param("total_steps", total_steps)
+    mlflow.log_param("batch_size", max_batch_size)
+
+    for step in range(total_steps):
         optimizer.zero_grad()
         x, y = data_loader.next_batch()
         x, y = x.cuda(), y.cuda()
         loss = model.forward_loss(x, y)
         loss.backward()
         optimizer.step()
-        print(f"step {step}, loss: {loss.item()}")
+        
+        # Log the loss for plotting
+        train_loss_values.append(loss.item())
 
-    # Save the trained model
-    checkpoint_path = "G:/My Drive/Llama_Medical_LLM/output_data/model_checkpoint.pth"
-    torch.save(model.state_dict(), checkpoint_path)
-    print(f"Model saved to {checkpoint_path}")
+        # Logging the loss every 500 steps to MLFlow
+        if step % 500 == 0:
+            mlflow.log_metric("Train Loss", loss.item(), step=step)
+            print(f"Step {step} - Train Loss: {loss.item()}")
 
-    # and now generate
+    # After training, plot the loss curve
+    plt.figure(figsize=(10, 6))
+    plt.plot(range(total_steps), train_loss_values, label="Train Loss")
+    plt.title("Training Loss Curve")
+    plt.xlabel("Training Steps")
+    plt.ylabel("Loss")
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+    # Log final model state to MLFlow
+    model_checkpoint_path = "trained_model.pth"
+    torch.save(model.state_dict(), model_checkpoint_path)
+    print(f"Model saved to {model_checkpoint_path}")
+    mlflow.pytorch.log_model(model, "model")
+
+    mlflow.end_run()
+
+    # Now generate using the trained model
     model.eval()
     prompts: List[str] = [
-        "The first symptoms of rabies may be very similar to",
-        "Marine toxins are naturally occurring",
-        "Obesity and having metabolic syndrome may increase the risk of",
+        "A 45-year-old woman was diagnosed with",
+        "A patient with breast cancer is undergoing",
+        "The clinical trial for lung cancer treatment showed",
+        "A new type of cancer therapy is being tested for"
     ]
 
     sample_rng = torch.Generator(device='cuda')
@@ -719,7 +752,7 @@ def main(
     t1 = time.time()
     print(f"Generated in {t1 - t0:.2f} seconds")
     for prompt, result in zip(prompts, results):
-        print(prompt, end="") # AK: change end="\n" to end=""
+        print(prompt, end="")  # AK: change end="\n" to end=""
         print(f"{result['generation']}")
         print("\n==================================\n")
 
