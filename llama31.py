@@ -724,7 +724,7 @@ def main(
     plt.show()
 
     # Log final model state to MLFlow
-    model_checkpoint_path = "trained_model.pth"
+    model_checkpoint_path = "G:/My Drive/Llama_Medical_LLM/output_data/trained_model.pth"
     torch.save(model.state_dict(), model_checkpoint_path)
     print(f"Model saved to {model_checkpoint_path}")
     mlflow.pytorch.log_model(model, "model")
