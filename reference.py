@@ -33,6 +33,10 @@ from fairscale.nn.model_parallel.initialize import (
     model_parallel_is_initialized,
 )
 
+# old imports
+# from llama.model import ModelArgs, Transformer
+# from llama.tokenizer import ChatFormat, Dialog, Message, Tokenizer
+# new imports
 from llama31 import ModelArgs, Transformer
 from tokenizer import Tokenizer
 
@@ -74,6 +78,7 @@ class Llama:
             and loads the pre-trained model and tokenizer.
         """
         assert 1 <= max_seq_len <= 8192, f"max_seq_len must be between 1 and 8192, got {max_seq_len}."
+        assert os.path.isdir(ckpt_dir), f"Checkpoint directory '{ckpt_dir}' does not exist."
         assert os.path.isfile(tokenizer_path), f"Tokenizer file '{tokenizer_path}' does not exist."
 
         if not torch.distributed.is_initialized():
@@ -91,31 +96,6 @@ class Llama:
 
         if local_rank > 0:
             sys.stdout = open(os.devnull, "w")
-
-        tokenizer = Tokenizer(model_path=tokenizer_path)
-
-        # Initialize the model architecture
-        model_args = ModelArgs(
-            max_seq_len=max_seq_len,
-            max_batch_size=max_batch_size,
-            vocab_size=tokenizer.n_words,  # Set vocab size from tokenizer
-        )
-
-        model = Transformer(model_args)
-        # Load the fine-tuned model weights
-        model.load_state_dict(torch.load(saved_model_path))
-        print(f"Loaded fine-tuned model from {saved_model_path}")
-
-        return Llama(model, tokenizer)
-    
-
-    def __init__(self, model: Transformer, tokenizer: Tokenizer):
-        self.model = model
-        self.tokenizer = tokenizer
-
-
-
-
 
         start_time = time.time()
         checkpoints = sorted(Path(ckpt_dir).glob("*.pth"))
@@ -149,7 +129,8 @@ class Llama:
     def __init__(self, model: Transformer, tokenizer: Tokenizer):
         self.model = model
         self.tokenizer = tokenizer
-
+        # AK: delete all chat stuff for now
+        # self.formatter = ChatFormat(tokenizer)
 
     @torch.inference_mode()
     def generate(
@@ -162,6 +143,25 @@ class Llama:
         logprobs: bool = False,
         echo: bool = False,
     ) -> Tuple[List[List[int]], Optional[List[List[float]]]]:
+        """
+        Generate text sequences based on provided prompts using the language generation model.
+
+        Args:
+            prompt_tokens (List[List[int]]): List of tokenized prompts, where each prompt is represented as a list of integers.
+            max_gen_len (int): Maximum length of the generated text sequence.
+            temperature (float, optional): Temperature value for controlling randomness in sampling. Defaults to 0.6.
+            top_p (float, optional): Top-p probability threshold for nucleus sampling. Defaults to 0.9.
+            logprobs (bool, optional): Flag indicating whether to compute token log probabilities. Defaults to False.
+            echo (bool, optional): Flag indicating whether to include prompt tokens in the generated output. Defaults to False.
+
+        Returns:
+            Tuple[List[List[int]], Optional[List[List[float]]]]: A tuple containing generated token sequences and, if logprobs is True, corresponding token log probabilities.
+
+        Note:
+            This method uses the provided prompts as a basis for generating text. It employs nucleus sampling to produce text with controlled randomness.
+            If logprobs is True, token log probabilities are computed for each generated token.
+
+        """
         params = self.model.params
         bsz = len(prompt_tokens)
         assert bsz <= params.max_batch_size, (bsz, params.max_batch_size)
@@ -322,20 +322,18 @@ def sample_top_p(probs, p, generator):
 
 # -----------------------------------------------------------------------------
 def main(
-    saved_model_path: str,
+    ckpt_dir: str,
     tokenizer_path: str,
-    temperature: float = 0.7,
+    temperature: float = 0.7,  # Changed from 0.0 to allow more variety
     top_p: float = 0.9,
     max_seq_len: int = 128,
-    max_gen_len: int = 64,
+    max_gen_len: int = 64,     # Increased from 32
     max_batch_size: int = 4,
 ):
-    """Run text generation with fine-tuned model"""
+    """Run text generation with better parameters"""
     print("Initializing model...")
-    
-    # Build model using saved fine-tuned weights
     generator = Llama.build(
-        saved_model_path=saved_model_path,
+        ckpt_dir=ckpt_dir,
         tokenizer_path=tokenizer_path,
         max_seq_len=max_seq_len,
         max_batch_size=max_batch_size,
@@ -360,7 +358,7 @@ def main(
         prompts,
         sample_rng=sample_rng,
         max_gen_len=max_gen_len,
-        temperature=temperature,
+        temperature=temperature,  # Higher temperature for more diversity
         top_p=top_p,
     )
 
@@ -371,6 +369,8 @@ def main(
         print(f"\nPrompt: {prompt}")
         print(f"Response: {result['generation']}")
         print("-" * 50)
+
+    torch.distributed.destroy_process_group()
 
 if __name__ == "__main__":
     fire.Fire(main)
