@@ -46,7 +46,7 @@ class ModelArgs:
     norm_eps: float = 1e-5
     rope_theta: float = 500000
     use_scaled_rope: bool = False
-    max_batch_size: int = 32
+    max_batch_size: int = 8
     max_seq_len: int = 2048
     flash: bool = False # use flash attention?
 
@@ -651,23 +651,23 @@ class DistributedShardedDataLoader:
 
 # -----------------------------------------------------------------------------
 # int main
-
-
 def main(
     ckpt_dir: str = "llama-models/models/llama3_1/Meta-Llama-3.1-8B",
     tokenizer_path: str = "llama-models/models/llama3_1/Meta-Llama-3.1-8B/tokenizer.model",
     temperature: float = 1.0,
     top_p: float = 0.9,
-    max_seq_len: int = 256,
-    max_gen_len: int = 256,
-    max_batch_size: int = 8,
+    max_seq_len: int = 64,
+    max_gen_len: int = 64,
+    max_batch_size: int = 1,
     flash: bool = True,
-    total_steps: int = 10000,  # total number of training steps
+    total_steps: int = 10000,
 ):
-
-    # Load the validation data shard
+    torch.set_default_dtype(torch.float16)
+    torch.set_default_device('cuda')
+    
     data_loader = DistributedShardedDataLoader(
         filename_pattern="/content/drive/MyDrive/Llama_Medical_LLM/output_data/*_test.bin",
+        B=max_batch_size, 
         T=max_seq_len,
         process_rank=0,
         num_processes=1,
@@ -681,81 +681,80 @@ def main(
         flash=flash,
     )
 
-    total_batch_size = max_batch_size * max_seq_len
-    print(f"total_batch_size: {total_batch_size}")
-
-    # Simple training loop to start
     model = llama.model
+    
+    # Enable training for specific layers
+    trainable_params = []
+    for name, param in model.named_parameters():
+        if "norm" in name or "wq" in name:
+            param.requires_grad = True
+            trainable_params.append(param)
+        else:
+            param.requires_grad = False
+    
     model.train()
-    optimizer = model.configure_optimizers(learning_rate=1e-5, weight_decay=0.0)
-
-    # List to store loss values for plotting
+    optimizer = torch.optim.AdamW(trainable_params, lr=1e-5)
+    
     train_loss_values = []
+    accumulation_steps = 8
 
-    # MLFlow Logging
     mlflow.start_run()
     mlflow.log_param("total_steps", total_steps)
     mlflow.log_param("batch_size", max_batch_size)
 
     for step in range(total_steps):
         optimizer.zero_grad()
-        x, y = data_loader.next_batch()
-        x, y = x.cuda(), y.cuda()
-        loss = model.forward_loss(x, y)
-        loss.backward()
-        optimizer.step()
+        accumulated_loss = 0
         
-        # Log the loss for plotting
-        train_loss_values.append(loss.item())
+        for _ in range(accumulation_steps):
+            x, y = data_loader.next_batch()
+            x, y = x.cuda(), y.cuda()
+            
+            loss = model.forward_loss(x, y) / accumulation_steps
+            accumulated_loss += loss.item()
+            loss.backward()
+            
+            del x, y
+            torch.cuda.empty_cache()
+        
+        optimizer.step()
+        train_loss_values.append(accumulated_loss)
 
-        # Logging the loss every 500 steps to MLFlow
         if step % 500 == 0:
-            mlflow.log_metric("Train Loss", loss.item(), step=step)
-            print(f"Step {step} - Train Loss: {loss.item()}")
+            mlflow.log_metric("Train Loss", accumulated_loss, step=step)
+            print(f"Step {step} - Train Loss: {accumulated_loss}")
+            print(f"Memory allocated: {torch.cuda.memory_allocated() / 1e9:.2f} GB")
 
-    # After training, plot the loss curve
-    plt.figure(figsize=(10, 6))
-    plt.plot(range(total_steps), train_loss_values, label="Train Loss")
-    plt.title("Training Loss Curve")
-    plt.xlabel("Training Steps")
-    plt.ylabel("Loss")
-    plt.legend()
-    plt.grid(True)
-    plt.show()
-
-    # Log final model state to MLFlow
-    model_checkpoint_path = "/content/drive/MyDrive/Llama_Medical_LLM/output_data/trained_model.pth"
-    torch.save(model.state_dict(), model_checkpoint_path)
-    print(f"Model saved to {model_checkpoint_path}")
-    mlflow.pytorch.log_model(model, "model")
-
+    model_checkpoint_path = "output_data/trained_model.pth"
+    torch.save({
+        'model_state_dict': model.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+        'step': step,
+    }, model_checkpoint_path)
+    
     mlflow.end_run()
-
-    # Now generate using the trained model
+    
     model.eval()
-    prompts: List[str] = [
+    prompts = [
         "A 45-year-old woman was diagnosed with",
-        "A patient with breast cancer is undergoing",
-        "The clinical trial for lung cancer treatment showed",
-        "A new type of cancer therapy is being tested for"
+        "A patient with breast cancer is undergoing"
     ]
-
+    
     sample_rng = torch.Generator(device='cuda')
     sample_rng.manual_seed(1337)
-    t0 = time.time()
     results = llama.text_completion(
         prompts,
         sample_rng=sample_rng,
-        max_gen_len=max_gen_len,
+        max_gen_len=max_seq_len,
         temperature=temperature,
         top_p=top_p,
     )
-    t1 = time.time()
-    print(f"Generated in {t1 - t0:.2f} seconds")
+    
     for prompt, result in zip(prompts, results):
-        print(prompt, end="")  # AK: change end="\n" to end=""
+        print(prompt, end="")
         print(f"{result['generation']}")
         print("\n==================================\n")
+
 
 if __name__ == "__main__":
     fire.Fire(main)

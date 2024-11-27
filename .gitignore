@@ -3,5 +3,6 @@
 /output_data
 Llama3.1-8B.zip
 /Llama3.1-8B
-/llama_models
+/llama-models
 /.ipynb_checkpoints
+/small_llama
