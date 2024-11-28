@@ -1,6 +1,5 @@
-from flask import Flask, request, render_template, jsonify
+from flask import Flask, request, jsonify
 import torch
-from pathlib import Path
 from llama31 import Llama
 
 # Define Flask app
@@ -9,25 +8,23 @@ app = Flask(__name__)
 # Load the LLaMA model and tokenizer
 def load_model():
     checkpoint_path = "output_data/trained_model.pth"
-    ckpt_dir = "G:\My Drive\Llama_Medical_LLM\Llama3.1-8B/"
-    tokenizer_path = "G:\My Drive\Llama_Medical_LLM\Llama3.1-8B\tokenizer.model"
+    ckpt_dir = "G:/My Drive/Llama_Medical_LLM/Llama3.1-8B/"
+    tokenizer_path = "G:/My Drive/Llama_Medical_LLM/Llama3.1-8B/tokenizer.model"
     
-    # Initialize the LLaMA model
+    # Load the model on the CPU
     llama = Llama.build(
         ckpt_dir=ckpt_dir,
         tokenizer_path=tokenizer_path,
         max_seq_len=2048,
         max_batch_size=8,
-        flash=False
+        flash=False,
     )
     
-    # Load the checkpoint to the CPU
+    # Override CUDA-specific logic
     checkpoint = torch.load(checkpoint_path, map_location=torch.device('cpu'))
     llama.model.load_state_dict(checkpoint['model_state_dict'])
-    
-    # Move the model to GPU
-    llama.model.to('cuda')
-    llama.model.eval()
+    llama.model.to('cpu')  # Ensure the model is on CPU
+    llama.model.eval()  # Set to evaluation mode
     return llama
 
 # Load the model globally
@@ -100,8 +97,8 @@ def generate():
         if not prompt:
             return jsonify({'error': 'Prompt cannot be empty'}), 400
         
-        # Generate text
-        sample_rng = torch.Generator(device='cuda')
+        # Generate text on CPU
+        sample_rng = torch.Generator(device='cpu')  # Use CPU for randomness
         sample_rng.manual_seed(1337)
         results = llama.text_completion(
             [prompt],
