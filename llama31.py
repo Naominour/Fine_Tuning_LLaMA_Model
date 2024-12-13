@@ -1,18 +1,3 @@
-"""
-nano-Llama 3.1
-Simpler version you can just forward on 1 GPU, without torchrun.
-Changes:
-- replace ColumnParallelLinear -> Linear
-- replace RowParallelLinear -> Linear
-- replace VocabParallelEmbedding -> Embedding
-
-Run example:
-
-python llama31.py \
-    --ckpt_dir llama-models/models/llama3_1/Meta-Llama-3.1-8B \
-    --tokenizer_path llama-models/models/llama3_1/Meta-Llama-3.1-8B/tokenizer.model
-"""
-
 import os
 import glob
 import fire
