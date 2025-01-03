@@ -27,8 +27,6 @@ MAX_NO_WHITESPACES_CHARS = 25_000
 class Tokenizer:
     """
     A tokenizer for converting between strings and tokenized integer sequences.
-
-    This implementation uses `tiktoken` and includes special tokens for specific use cases.
     """
 
     # Define special tokens and regular expression for tokenization
@@ -39,9 +37,6 @@ class Tokenizer:
     def __init__(self, model_path: str):
         """
         Initialize the tokenizer with a model file.
-
-        Args:
-            model_path: Path to the BPE model file.
         """
         # Ensure the model file exists
         assert os.path.isfile(model_path), model_path
@@ -100,16 +95,6 @@ class Tokenizer:
     ) -> List[int]:
         """
         Encodes a string into a list of token IDs.
-
-        Args:
-            s: The input string to encode.
-            bos: Whether to prepend the beginning-of-sequence token.
-            eos: Whether to append the end-of-sequence token.
-            allowed_special: Special tokens allowed in the input string.
-            disallowed_special: Special tokens that raise an error if present in the input.
-
-        Returns:
-            A list of token IDs representing the encoded string.
         """
         if allowed_special is None:
             allowed_special = set()
@@ -142,12 +127,6 @@ class Tokenizer:
     def decode(self, t: Sequence[int]) -> str:
         """
         Decodes a list of token IDs back into a string.
-
-        Args:
-            t: Sequence of token IDs to decode.
-
-        Returns:
-            The decoded string.
         """
         return self.model.decode(cast(List[int], t))  # Safe typecasting
 
@@ -157,13 +136,6 @@ class Tokenizer:
     ) -> Iterator[str]:
         """
         Splits a string into substrings with limited consecutive whitespace or non-whitespace.
-
-        Args:
-            s: Input string to split.
-            max_consecutive_slice_len: Maximum length of consecutive whitespaces or non-whitespaces.
-
-        Yields:
-            Substrings with limited consecutive whitespace or non-whitespace characters.
         """
         current_slice_len = 0
         current_slice_is_space = s[0].isspace() if len(s) > 0 else False
