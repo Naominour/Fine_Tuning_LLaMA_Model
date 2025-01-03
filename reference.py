@@ -1,44 +1,21 @@
-"""
-
-Most of this code was taken from:
-- https://github.com/meta-llama/llama3/blob/main/example_text_completion.py
-- https://github.com/meta-llama/llama3/blob/main/llama/generation.py
-
-These files were for Llama 3 and the repos are marked as deprecated.
-I mostly copy pasted the code and changed a few things to adapt to Llama 3.1:
-- update imports
-- delete Chat, use only base model for now
-- tweak some parts to delete WARNINGs, see anything with "AK:" marker as diffs
-
-Example run as following on 1 GPU:
-torchrun --nnodes 1 --nproc_per_node 1 reference.py \
-    --ckpt_dir llama-models/models/llama3_1/Meta-Llama-3.1-8B \
-    --tokenizer_path llama-models/models/llama3_1/Meta-Llama-3.1-8B/tokenizer.model
-"""
-
 from typing import List
-import fire
-import json
-import os
-import sys
-import time
 from pathlib import Path
 from typing import List, Optional, Tuple, TypedDict
-
-import torch
-import torch.nn.functional as F
+from llama31 import ModelArgs, Transformer
+from tokenizer import Tokenizer
 from fairscale.nn.model_parallel.initialize import (
     get_model_parallel_rank,
     initialize_model_parallel,
     model_parallel_is_initialized,
 )
 
-# old imports
-# from llama.model import ModelArgs, Transformer
-# from llama.tokenizer import ChatFormat, Dialog, Message, Tokenizer
-# new imports
-from llama31 import ModelArgs, Transformer
-from tokenizer import Tokenizer
+import fire
+import json
+import os
+import sys
+import time
+import torch
+import torch.nn.functional as F
 
 class CompletionPrediction(TypedDict, total=False):
     generation: str
@@ -57,25 +34,6 @@ class Llama:
     ) -> "Llama":
         """
         Build a Llama instance by initializing and loading a model checkpoint.
-
-        Args:
-            ckpt_dir (str): Path to the directory containing checkpoint files.
-            tokenizer_path (str): Path to the tokenizer file.
-            max_seq_len (int): Maximum sequence length for input text.
-            max_batch_size (int): Maximum batch size for inference.
-            model_parallel_size (Optional[int], optional): Number of model parallel processes.
-                If not provided, it's determined from the environment. Defaults to None.
-
-        Returns:
-            Llama: An instance of the Llama class with the loaded model and tokenizer.
-
-        Raises:
-            AssertionError: If there are no checkpoint files in the specified directory,
-                or if the model parallel size does not match the number of checkpoint files.
-
-        Note:
-            This method initializes the distributed process group, sets the device to CUDA,
-            and loads the pre-trained model and tokenizer.
         """
         assert 1 <= max_seq_len <= 8192, f"max_seq_len must be between 1 and 8192, got {max_seq_len}."
         assert os.path.isdir(ckpt_dir), f"Checkpoint directory '{ckpt_dir}' does not exist."
