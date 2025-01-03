@@ -129,7 +129,7 @@ model = Llama.build(
    
 ```
 results = model.text_completion(
-    prompts=["The patient was diagnosed with"],
+    prompts=["What is Melanoma?"],
     max_gen_len=50,
     temperature=0.7,
     top_p=0.9,
