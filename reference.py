@@ -103,22 +103,6 @@ class Llama:
     ) -> Tuple[List[List[int]], Optional[List[List[float]]]]:
         """
         Generate text sequences based on provided prompts using the language generation model.
-
-        Args:
-            prompt_tokens (List[List[int]]): List of tokenized prompts, where each prompt is represented as a list of integers.
-            max_gen_len (int): Maximum length of the generated text sequence.
-            temperature (float, optional): Temperature value for controlling randomness in sampling. Defaults to 0.6.
-            top_p (float, optional): Top-p probability threshold for nucleus sampling. Defaults to 0.9.
-            logprobs (bool, optional): Flag indicating whether to compute token log probabilities. Defaults to False.
-            echo (bool, optional): Flag indicating whether to include prompt tokens in the generated output. Defaults to False.
-
-        Returns:
-            Tuple[List[List[int]], Optional[List[List[float]]]]: A tuple containing generated token sequences and, if logprobs is True, corresponding token log probabilities.
-
-        Note:
-            This method uses the provided prompts as a basis for generating text. It employs nucleus sampling to produce text with controlled randomness.
-            If logprobs is True, token log probabilities are computed for each generated token.
-
         """
         params = self.model.params
         bsz = len(prompt_tokens)
@@ -213,23 +197,6 @@ class Llama:
     ) -> List[CompletionPrediction]:
         """
         Perform text completion for a list of prompts using the language generation model.
-
-        Args:
-            prompts (List[str]): List of text prompts for completion.
-            temperature (float, optional): Temperature value for controlling randomness in sampling. Defaults to 0.6.
-            top_p (float, optional): Top-p probability threshold for nucleus sampling. Defaults to 0.9.
-            max_gen_len (Optional[int], optional): Maximum length of the generated completion sequence.
-                If not provided, it's set to the model's maximum sequence length minus 1.
-            logprobs (bool, optional): Flag indicating whether to compute token log probabilities. Defaults to False.
-            echo (bool, optional): Flag indicating whether to include prompt tokens in the generated output. Defaults to False.
-
-        Returns:
-            List[CompletionPrediction]: List of completion predictions, each containing the generated text completion.
-
-        Note:
-            This method generates text completions for the provided prompts, employing nucleus sampling to introduce controlled randomness.
-            If logprobs is True, token log probabilities are computed for each generated token.
-
         """
         if max_gen_len is None:
             max_gen_len = self.model.params.max_seq_len - 1
@@ -257,17 +224,6 @@ class Llama:
 def sample_top_p(probs, p, generator):
     """
     Perform top-p (nucleus) sampling on a probability distribution.
-
-    Args:
-        probs (torch.Tensor): Probability distribution tensor.
-        p (float): Probability threshold for top-p sampling.
-
-    Returns:
-        torch.Tensor: Sampled token indices.
-
-    Note:
-        Top-p sampling selects the smallest set of tokens whose cumulative probability mass
-        exceeds the threshold p. The distribution is renormalized based on the selected tokens.
     """
     probs_sort, probs_idx = torch.sort(probs, dim=-1, descending=True)
     probs_sum = torch.cumsum(probs_sort, dim=-1)
