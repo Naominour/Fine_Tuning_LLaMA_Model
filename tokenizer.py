@@ -18,47 +18,57 @@ from typing import (
 )
 
 # The tiktoken tokenizer can handle <=400k chars without
-# pyo3_runtime.PanicException.
 TIKTOKEN_MAX_ENCODE_CHARS = 400_000
 
-# https://github.com/openai/tiktoken/issues/195
 # Here we iterate over subsequences and split if we exceed the limit
 # of max consecutive non-whitespace or whitespace characters.
 MAX_NO_WHITESPACES_CHARS = 25_000
 
 class Tokenizer:
-    """ Converts List[int] <-> str """
+    """
+    A tokenizer for converting between strings and tokenized integer sequences.
 
+    This implementation uses `tiktoken` and includes special tokens for specific use cases.
+    """
+
+    # Define special tokens and regular expression for tokenization
     special_tokens: Dict[str, int]
-    num_reserved_special_tokens = 256
-    pat_str = r"(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\p{N}]?\p{L}+|\p{N}{1,3}| ?[^\s\p{L}\p{N}]+[\r\n]*|\s*[\r\n]+|\s+(?!\S)|\s+"  # noqa: E501
+    num_reserved_special_tokens = 256  # Number of reserved special tokens
+    pat_str = r"(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\p{N}]?\p{L}+|\p{N}{1,3}| ?[^\s\p{L}\p{N}]+[\r\n]*|\s*[\r\n]+|\s+(?!\S)|\s+"  # Tokenization pattern
 
     def __init__(self, model_path: str):
+        """
+        Initialize the tokenizer with a model file.
+
+        Args:
+            model_path: Path to the BPE model file.
+        """
+        # Ensure the model file exists
         assert os.path.isfile(model_path), model_path
+
+        # Load mergeable ranks for BPE encoding
         mergeable_ranks = load_tiktoken_bpe(model_path)
         num_base_tokens = len(mergeable_ranks)
+
+        # Define a set of special tokens
         special_tokens = [
-            "<|begin_of_text|>",
-            "<|end_of_text|>",
-            "<|reserved_special_token_0|>",
-            "<|reserved_special_token_1|>",
-            "<|finetune_right_pad_id|>",
-            "<|step_id|>",
-            "<|start_header_id|>",
-            "<|end_header_id|>",
-            "<|eom_id|>",  # end of message
-            "<|eot_id|>",  # end of turn
-            "<|python_tag|>",
+            "<|begin_of_text|>", "<|end_of_text|>", "<|reserved_special_token_0|>",
+            "<|reserved_special_token_1|>", "<|finetune_right_pad_id|>", "<|step_id|>",
+            "<|start_header_id|>", "<|end_header_id|>", "<|eom_id|>", "<|eot_id|>", "<|python_tag|>",
         ]
+        # Add reserved tokens for additional special cases
         reserved_tokens = [
             f"<|reserved_special_token_{2 + i}|>"
             for i in range(self.num_reserved_special_tokens - len(special_tokens))
         ]
         special_tokens = special_tokens + reserved_tokens
 
+        # Map special tokens to their IDs
         self.special_tokens = {
             token: num_base_tokens + i for i, token in enumerate(special_tokens)
         }
+
+        # Create the tiktoken encoding model
         self.model = tiktoken.Encoding(
             name=Path(model_path).name,
             pat_str=self.pat_str,
@@ -66,16 +76,15 @@ class Tokenizer:
             special_tokens=self.special_tokens,
         )
 
+        # Set tokenizer properties
         self.n_words: int = num_base_tokens + len(special_tokens)
-        self.bos_id: int = self.special_tokens["<|begin_of_text|>"]
-        self.eos_id: int = self.special_tokens["<|end_of_text|>"]
-        self.eot_id: int = self.special_tokens["<|eot_id|>"]
-        self.eom_id: int = self.special_tokens["<|eom_id|>"]
-        self.python_tag_id = self.special_tokens["<|python_tag|>"]
-        self.pad_id: int = self.special_tokens["<|finetune_right_pad_id|>"]
+        self.bos_id: int = self.special_tokens["<|begin_of_text|>"]  # Beginning of sequence
+        self.eos_id: int = self.special_tokens["<|end_of_text|>"]  # End of sequence
+        self.eot_id: int = self.special_tokens["<|eot_id|>"]  # End of turn
+        self.eom_id: int = self.special_tokens["<|eom_id|>"]  # End of message
+        self.python_tag_id = self.special_tokens["<|python_tag|>"]  # Python code tag
+        self.pad_id: int = self.special_tokens["<|finetune_right_pad_id|>"]  # Padding token
         self.stop_tokens = [
-            # AK: I changed the tokens around here to be for the base model
-            # as I understand the sequence is <BOS>content<EOS><BOS>content<EOS>...
             self.special_tokens["<|begin_of_text|>"],
             self.special_tokens["<|end_of_text|>"],
         ]
@@ -93,27 +102,20 @@ class Tokenizer:
         Encodes a string into a list of token IDs.
 
         Args:
-            s (str): The input string to be encoded.
-            bos (bool): Whether to prepend the beginning-of-sequence token.
-            eos (bool): Whether to append the end-of-sequence token.
-            allowed_tokens ("all"|set[str]): allowed special tokens in string
-            disallowed_tokens ("all"|set[str]): special tokens that raise an error when in string
+            s: The input string to encode.
+            bos: Whether to prepend the beginning-of-sequence token.
+            eos: Whether to append the end-of-sequence token.
+            allowed_special: Special tokens allowed in the input string.
+            disallowed_special: Special tokens that raise an error if present in the input.
 
         Returns:
-            list[int]: A list of token IDs.
-
-        By default, setting disallowed_special=() encodes a string by ignoring
-        special tokens. Specifically:
-        - Setting `disallowed_special` to () will cause all text corresponding
-          to special tokens to be encoded as natural text (insteading of raising
-          an error).
-        - Setting `allowed_special` to "all" will treat all text corresponding
-          to special tokens to be encoded as special tokens.
+            A list of token IDs representing the encoded string.
         """
         if allowed_special is None:
             allowed_special = set()
         assert type(s) is str
 
+        # Split input into manageable substrings
         substrs = (
             substr
             for i in range(0, len(s), TIKTOKEN_MAX_ENCODE_CHARS)
@@ -123,6 +125,7 @@ class Tokenizer:
         )
         t: List[int] = []
         for substr in substrs:
+            # Encode each substring and add to token list
             t.extend(
                 self.model.encode(
                     substr,
@@ -130,23 +133,37 @@ class Tokenizer:
                     disallowed_special=disallowed_special,
                 )
             )
-        if bos:
+        if bos:  # Add beginning-of-sequence token
             t.insert(0, self.bos_id)
-        if eos:
+        if eos:  # Add end-of-sequence token
             t.append(self.eos_id)
         return t
 
     def decode(self, t: Sequence[int]) -> str:
-        # Typecast is safe here. Tiktoken doesn't do anything list-related with the sequence.
-        return self.model.decode(cast(List[int], t))
+        """
+        Decodes a list of token IDs back into a string.
+
+        Args:
+            t: Sequence of token IDs to decode.
+
+        Returns:
+            The decoded string.
+        """
+        return self.model.decode(cast(List[int], t))  # Safe typecasting
 
     @staticmethod
     def _split_whitespaces_or_nonwhitespaces(
         s: str, max_consecutive_slice_len: int
     ) -> Iterator[str]:
         """
-        Splits the string `s` so that each substring contains no more than `max_consecutive_slice_len`
-        consecutive whitespaces or consecutive non-whitespaces.
+        Splits a string into substrings with limited consecutive whitespace or non-whitespace.
+
+        Args:
+            s: Input string to split.
+            max_consecutive_slice_len: Maximum length of consecutive whitespaces or non-whitespaces.
+
+        Yields:
+            Substrings with limited consecutive whitespace or non-whitespace characters.
         """
         current_slice_len = 0
         current_slice_is_space = s[0].isspace() if len(s) > 0 else False
@@ -155,13 +172,14 @@ class Tokenizer:
         for i in range(len(s)):
             is_now_space = s[i].isspace()
 
-            if current_slice_is_space ^ is_now_space:
+            if current_slice_is_space ^ is_now_space:  # Check if type changes
                 current_slice_len = 1
                 current_slice_is_space = is_now_space
             else:
                 current_slice_len += 1
                 if current_slice_len > max_consecutive_slice_len:
-                    yield s[slice_start:i]
+                    yield s[slice_start:i]  # Yield the substring
                     slice_start = i
                     current_slice_len = 1
-        yield s[slice_start:]
+        yield s[slice_start:]  # Yield the final substring
+
