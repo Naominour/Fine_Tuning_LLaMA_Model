@@ -42,7 +42,6 @@ class ModelArgs:
     def __init__(self, **kwargs):
         """
         Initialize model arguments and validate constraints.
-
         Args:
             kwargs: Keyword arguments for overriding default parameters.
         """
@@ -65,7 +64,6 @@ class RMSNorm(torch.nn.Module):
     def __init__(self, dim: int, eps: float = 1e-6):
         """
         Initialize the RMSNorm layer.
-
         Args:
             dim: Dimension of the input features.
             eps: Small constant to avoid division by zero.
@@ -77,25 +75,10 @@ class RMSNorm(torch.nn.Module):
     def _norm(self, x):
         """
         Compute the RMS normalization.
-
-        Args:
-            x: Input tensor.
-
-        Returns:
-            Normalized tensor.
         """
         return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
 
     def forward(self, x):
-        """
-        Forward pass of RMSNorm.
-
-        Args:
-            x: Input tensor.
-
-        Returns:
-            Scaled normalized tensor.
-        """
         output = self._norm(x.float()).type_as(x)
         return output * self.weight
 
@@ -103,10 +86,8 @@ class RMSNorm(torch.nn.Module):
 def apply_scaling(freqs: torch.Tensor):
     """
     Scale rotary positional embeddings (RoPE).
-
     Args:
         freqs: Input frequency tensor.
-
     Returns:
         Scaled frequencies.
     """
@@ -134,13 +115,11 @@ def apply_scaling(freqs: torch.Tensor):
 def precompute_freqs_cis(dim: int, end: int, theta: float = 10000.0, use_scaled: bool = False):
     """
     Precompute complex frequencies for RoPE embeddings.
-
     Args:
         dim: Dimension of the embeddings.
         end: Sequence length for precomputing.
         theta: Base scaling factor for RoPE.
         use_scaled: Whether to use scaled RoPE.
-
     Returns:
         Precomputed complex frequencies.
     """
@@ -157,11 +136,9 @@ def precompute_freqs_cis(dim: int, end: int, theta: float = 10000.0, use_scaled:
 def apply_rotary_emb(x, freqs_cis):
     """
     Apply rotary positional embeddings to input tensor.
-
     Args:
         x: Input tensor of shape (batch_size, seq_len, n_heads, head_dim).
         freqs_cis: Complex frequencies for RoPE.
-
     Returns:
         Tensor with RoPE applied.
     """
@@ -180,11 +157,9 @@ def apply_rotary_emb(x, freqs_cis):
 def repeat_kv(x: torch.Tensor, n_rep: int) -> torch.Tensor:
     """
     Repeat key-value pairs for grouped-query attention.
-
     Args:
         x: Input tensor of shape (batch_size, seq_len, n_heads, head_dim).
         n_rep: Number of repetitions.
-
     Returns:
         Tensor with repeated key-value pairs.
     """
@@ -205,7 +180,6 @@ class KVCache(nn.Module):
     def __init__(self, batch_size, seq_length, n_kv_heads, head_dim, dtype, device):
         """
         Initialize the KVCache.
-
         Args:
             batch_size: Batch size.
             seq_length: Sequence length.
@@ -222,12 +196,10 @@ class KVCache(nn.Module):
     def update(self, start_pos, xk, xv):
         """
         Update the cache with new key-value pairs.
-
         Args:
             start_pos: Starting position for the update.
             xk: New key tensor.
             xv: New value tensor.
-
         Returns:
             Updated key and value tensors.
         """
@@ -246,7 +218,6 @@ class Attention(nn.Module):
     def __init__(self, args: ModelArgs):
         """
         Initialize the attention module.
-
         Args:
             args: An instance of ModelArgs containing model hyperparameters.
         """
@@ -277,13 +248,11 @@ class Attention(nn.Module):
     ):
         """
         Forward pass for multi-head attention.
-
         Args:
             x: Input tensor of shape (batch_size, seq_len, dim).
             start_pos: Start position for caching.
             freqs_cis: Precomputed rotary positional embeddings.
             mask: Optional attention mask.
-
         Returns:
             Projected output tensor of shape (batch_size, seq_len, dim).
         """
@@ -342,7 +311,6 @@ class FeedForward(nn.Module):
     ):
         """
         Initialize the feedforward module.
-
         Args:
             dim: Input and output dimension.
             hidden_dim: Base hidden dimension.
@@ -365,10 +333,8 @@ class FeedForward(nn.Module):
     def forward(self, x):
         """
         Forward pass for feedforward network.
-
         Args:
             x: Input tensor of shape (batch_size, seq_len, dim).
-
         Returns:
             Output tensor of shape (batch_size, seq_len, dim).
         """
@@ -384,7 +350,6 @@ class Transformer(nn.Module):
     def __init__(self, params: ModelArgs):
         """
         Initialize the Transformer model.
-
         Args:
             params: An instance of ModelArgs containing model hyperparameters.
         """
@@ -414,11 +379,9 @@ class Transformer(nn.Module):
     def forward(self, tokens: torch.Tensor, start_pos: int):
         """
         Forward method for inference, redirects to `forward_inference`.
-
         Args:
             tokens: Input token indices of shape (batch_size, seq_len).
             start_pos: Starting position for attention.
-
         Returns:
             Output logits of shape (batch_size, seq_len, vocab_size).
         """
@@ -427,11 +390,9 @@ class Transformer(nn.Module):
     def forward_inference(self, tokens: torch.Tensor, start_pos: int):
         """
         Forward pass for inference mode.
-
         Args:
             tokens: Input token indices of shape (batch_size, seq_len).
             start_pos: Starting position for attention.
-
         Returns:
             Logits of shape (batch_size, seq_len, vocab_size).
         """
@@ -461,12 +422,10 @@ class Transformer(nn.Module):
     def forward_loss(self, inputs: torch.Tensor, targets: torch.Tensor, ignore_index=-100):
         """
         Compute the loss for training mode.
-
         Args:
             inputs: Input token indices of shape (batch_size, seq_len).
             targets: Target token indices of shape (batch_size, seq_len).
             ignore_index: Index to ignore in loss computation.
-
         Returns:
             Cross-entropy loss value.
         """
@@ -494,13 +453,11 @@ class Transformer(nn.Module):
     def configure_optimizers(self, learning_rate, weight_decay=0.0, betas=(0.9, 0.97), device_type='cuda'):
         """
         Configure and initialize the optimizer for training.
-
         Args:
             learning_rate: Initial learning rate.
             weight_decay: Weight decay for regularization.
             betas: Betas for AdamW optimizer.
             device_type: Type of device (e.g., "cuda").
-
         Returns:
             Optimizer instance.
         """
@@ -554,7 +511,6 @@ class Llama:
     ) -> "Llama":
         """
         Build and initialize the Llama model from a checkpoint and tokenizer.
-
         Args:
             ckpt_dir: Directory containing model checkpoint files.
             tokenizer_path: Path to the tokenizer model file.
@@ -563,7 +519,6 @@ class Llama:
             flash: Use flash attention if True.
             model_parallel_size: Number of parallel processes for model.
             seed: Random seed for reproducibility.
-
         Returns:
             An instance of the Llama class.
         """
@@ -615,7 +570,6 @@ class Llama:
     def __init__(self, model: Transformer, tokenizer: Tokenizer):
         """
         Initialize the Llama instance.
-
         Args:
             model: A Transformer model instance.
             tokenizer: A Tokenizer instance.
@@ -635,7 +589,6 @@ class Llama:
     ) -> Tuple[List[List[int]], Optional[List[List[float]]]]:
         """
         Generate text sequences based on input prompts.
-
         Args:
             prompt_tokens: List of tokenized prompts, each represented as a list of integers.
             sample_rng: Random number generator for sampling.
@@ -643,7 +596,6 @@ class Llama:
             temperature: Sampling temperature for randomness control.
             top_p: Top-p probability threshold for nucleus sampling.
             echo: Include prompt tokens in the output if True.
-
         Returns:
             A tuple containing:
                 - Generated token sequences for each prompt.
@@ -717,7 +669,6 @@ class Llama:
         for i, toks in enumerate(tokens.tolist()):
             """
             Process generated token sequences for each batch instance.
-
             Steps:
                 1. Adjust sequence start position based on whether the prompt is echoed.
                 2. Truncate sequence to the maximum generation length.
@@ -754,7 +705,6 @@ class Llama:
     ):
         """
         Generate text completions for input prompts.
-
         Args:
             prompts: List of input strings to complete.
             sample_rng: Random number generator for token sampling.
@@ -762,7 +712,6 @@ class Llama:
             top_p: Top-p threshold for nucleus sampling (default: 0.9).
             max_gen_len: Maximum generation length (default: model's max sequence length - 1).
             echo: Include prompt in the output if True (default: False).
-
         Returns:
             List of dictionaries containing generated text for each prompt.
         """
@@ -790,12 +739,10 @@ class Llama:
 def sample_top_p(probs, p, generator):
     """
     Perform nucleus (top-p) sampling to select the next token.
-
     Args:
         probs: Tensor of token probabilities (batch_size, vocab_size).
         p: Cumulative probability threshold for top-p sampling.
         generator: Random number generator for sampling.
-
     Returns:
         Tensor of selected token indices (batch_size, 1).
     """
@@ -821,10 +768,8 @@ def sample_top_p(probs, p, generator):
 def _peek_data_shard(filename):
     """
     Reads the header of a data shard file to extract metadata.
-
     Args:
         filename: Path to the data shard file.
-
     Returns:
         ntok: Number of tokens in the file as claimed in the header.
     """
