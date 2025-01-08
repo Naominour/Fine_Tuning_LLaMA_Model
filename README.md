@@ -1,4 +1,4 @@
-# Fine-Tuning GPT Model for Medical Applications
+# Fine-Tuning LLaMA Model for Medical Applications
 
 This repository contains the implementation of a Transformer-based language model designed for generating medical text. It supports fine-tuning, evaluation, and deployment, leveraging modern deep learning techniques for accurate and efficient text generation.
 
