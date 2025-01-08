@@ -26,9 +26,13 @@ This repository contains the implementation of a Transformer-based language mode
 
 ## Key Features
 **• Transformer Architecture:** Utilizes a custom Transformer-based architecture with scalable rotary embeddings and multi-head self-attention.
+
 **• Medical Domain Adaptation:** Fine-tuned for medical text generation using distributed and sharded datasets.
+
 **• Experiment Tracking:** Logs training progress, metrics, and parameters using MLflow.
+
 **• Custom Data Loader:** Efficient distributed, sharded data loading for handling large datasets.
+
 **• Deployment: Supports** text generation via a pre-trained model through customizable inference methods.
 
 ## Project Overview
